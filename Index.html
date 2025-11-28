@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECKO - Détecteur de vérité</title>
+<script src="https://js.stripe.com/v3/"></script>
+<style>
+  body,html{margin:0;height:100%;background:linear-gradient(#2d1b4e,#ffb4b4);color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+  .petal{position:absolute;top:-20px;width:16px;height:16px;background:#ffb6d9;border-radius:60% 40% 60% 40%;opacity:0;animation:fall linear infinite}
+  @keyframes fall{
+    0%{transform:translateY(-100px) rotate(0deg);opacity:0}
+    10%{opacity:0.9}
+    90%{opacity:0.6}
+    100%{transform:translateY(calc(100vh + 100px)) translateX(60px) rotate(900deg);opacity:0}
+  }
+  .shiba{width:200px;animation:float 6s ease-in-out infinite}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-15px)}}
+  .box{background:rgba(255,255,255,0.15);backdrop-filter:blur(20px);border-radius:25px;padding:30px;max-width:90%;text-align:center;position:relative;z-index:10;max-height:90vh;overflow-y:auto}
+  textarea{width:100%;padding:15px;margin:15px 0;border:none;border-radius:15px;background:rgba(255,255,255,0.1);color:#fff;height:100px;resize:none}
+  input[type=range]{width:100%;margin:20px 0;height:8px}
+  button{padding:15px 30px;background:#b794f6;border:none;border-radius:15px;color:#fff;font-weight:bold;cursor:pointer;margin:10px}
+  button:hover{background:#a384e5}
+  .hidden{display:none}
+  .big{font-size:5rem;font-weight:900;background:linear-gradient(#b794f6,#fbb6ce);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  #messages{height:50vh;overflow-y:auto;padding:20px;background:rgba(0,0,0,0.2);border-radius:15px;margin:20px 0}
+  .msg{padding:15px;border-radius:15px;margin:10px 5px;animation:fadeIn 0.3s}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  .user{text-align:right;background:#b794f6}
+  .ecko{background:rgba(255,255,255,0.2)}
+  input[type=text]{width:100%;padding:15px;margin:10px 0;border:none;border-radius:15px;background:rgba(255,255,255,0.2);color:#fff}
+  .typing{opacity:0.7;font-style:italic}
+</style>
+</head>
+<body>
+
+<div id="petals"></div>
+
+<div class="box">
+  <!-- Sélecteur de langue -->
+  <div style="position:absolute;top:20px;right:20px;z-index:100">
+    <select id="langSelect" onchange="changeLang()" style="padding:10px;border-radius:10px;background:rgba(255,255,255,0.2);color:#fff;border:none;cursor:pointer;font-weight:bold">
+      <option value="fr">🇫🇷 FR</option>
+      <option value="en">🇬🇧 EN</option>
+    </select>
+  </div>
+
+  <img src="https://i.ibb.co/FbkxRZxq/Background-Eraser-20251028-010530364.png" class="shiba">
+  <h1>ECKO</h1>
+  <p id="subtitle">Détecteur de vérité mystique 🐕✨</p>
+
+  <!-- Étape 1 -->
+  <div id="step1">
+    <p><strong><span id="step1Title">1. Raconte-moi ce qui te tracasse</span></strong></p>
+    <textarea id="q1" placeholder="Ex: Il m'a dit qu'il était occupé mais j'ai vu qu'il était en ligne..."></textarea>
+    <button onclick="next(2)" id="btn1">Suivant</button>
+  </div>
+
+  <!-- Étape 2 -->
+  <div id="step2" class="hidden">
+    <p><strong><span id="step2Title">2. Preuves concrètes</span></strong></p>
+    <textarea id="q2" placeholder="Ex: Il like les photos d'une autre, il répond plus après 22h..."></textarea>
+    <button onclick="next(3)" id="btn2">Suivant</button>
+  </div>
+
+  <!-- Étape 3 -->
+  <div id="step3" class="hidden">
+    <p><strong><span id="step3Title">3. Ton intuition sur 10 ?</span></strong></p>
+    <input type="range" min="1" max="10" value="5" id="intuition">
+    <p style="font-size:1.5rem"><span id="val">5</span>/10</p>
+    <button onclick="calculer()" id="btn3">🔮 Analyser la vérité</button>
+  </div>
+
+  <!-- Résultat -->
+  <div id="result" class="hidden">
+    <div class="big" id="percent">0%</div>
+    <p id="msg" style="font-size:1.3rem;margin:20px 0"></p>
+    <p style="font-size:0.9rem;opacity:0.8" id="freeUsed">🎁 1 analyse gratuite utilisée</p>
+    <button onclick="initStripe()" id="btnPremium">✨ Illimité 4,90€</button>
+    <button onclick="restart()" style="background:#ffffff44" id="btnRestart">🔄 Recommencer</button>
+  </div>
+
+  <!-- Chat illimité -->
+  <div id="chat" class="hidden">
+    <h3 id="chatTitle">💬 Chat illimité débloqué !</h3>
+    <div id="messages">
+      <div class="msg ecko" id="welcomeMsg">Woof ! 🐕 Tout est débloqué, pose-moi n'importe quoi sur l'amour, les relations, les red flags... Je suis là !</div>
+    </div>
+    <input type="text" id="input" placeholder="" onkeypress="if(event.key==='Enter')send()">
+    <button onclick="send()" id="btnSend">Envoyer</button>
+    <button onclick="restart()" style="background:#ffffff44;font-size:0.9rem" id="btnNewAnalysis">Nouvelle analyse</button>
+  </div>
+</div>
+
+<script>
+// CONFIGURATION STRIPE - REMPLACE PAR TES VRAIES CLÉS
+const STRIPE_PUBLIC_KEY = 'pk_test_VOTRE_CLE_PUBLIQUE_ICI';
+const PRICE_ID = 'price_VOTRE_PRICE_ID_ICI'; // Créé dans Stripe Dashboard
+let stripe;
+let currentLang = 'fr';
+
+// TRADUCTIONS
+const translations = {
+  fr: {
+    subtitle: "Détecteur de vérité mystique 🐕✨",
+    step1Title: "1. Raconte-moi ce qui te tracasse",
+    step1Placeholder: "Ex: Il m'a dit qu'il était occupé mais j'ai vu qu'il était en ligne...",
+    step2Title: "2. Preuves concrètes",
+    step2Placeholder: "Ex: Il like les photos d'une autre, il répond plus après 22h...",
+    step3Title: "3. Ton intuition sur 10 ?",
+    btnNext: "Suivant",
+    btnAnalyze: "🔮 Analyser la vérité",
+    freeUsed: "🎁 1 analyse gratuite utilisée",
+    btnPremium: "✨ Illimité 4,90€",
+    btnRestart: "🔄 Recommencer",
+    chatTitle: "💬 Chat illimité débloqué !",
+    welcomeMsg: "Woof ! 🐕 Tout est débloqué, pose-moi n'importe quoi sur l'amour, les relations, les red flags... Je suis là !",
+    inputPlaceholder: "Ta question...",
+    btnSend: "Envoyer",
+    btnNewAnalysis: "Nouvelle analyse",
+    typing: "Ecko réfléchit...",
+    resultLow: "🚨 RED FLAG ÉNORME ! Fuis direct, c'est toxique",
+    resultMedLow: "⚠️ C'est très louche... Je te conseille d'avoir une vraie discussion",
+    resultMed: "🤔 C'est mitigé... Reste vigilant(e) mais pas de panique",
+    resultMedHigh: "✅ Ça a l'air plutôt sain ! Quelques détails à surveiller",
+    resultHigh: "💚 C'EST VRAI ! Fonce, cette personne est sincère"
+  },
+  en: {
+    subtitle: "Mystical truth detector 🐕✨",
+    step1Title: "1. Tell me what's bothering you",
+    step1Placeholder: "Ex: He said he was busy but I saw him online...",
+    step2Title: "2. Concrete evidence",
+    step2Placeholder: "Ex: He likes other girls' photos, doesn't reply after 10pm...",
+    step3Title: "3. Your intuition out of 10?",
+    btnNext: "Next",
+    btnAnalyze: "🔮 Analyze the truth",
+    freeUsed: "🎁 1 free analysis used",
+    btnPremium: "✨ Unlimited €4.90",
+    btnRestart: "🔄 Start over",
+    chatTitle: "💬 Unlimited chat unlocked!",
+    welcomeMsg: "Woof! 🐕 Everything is unlocked, ask me anything about love, relationships, red flags... I'm here!",
+    inputPlaceholder: "Your question...",
+    btnSend: "Send",
+    btnNewAnalysis: "New analysis",
+    typing: "Ecko is thinking...",
+    resultLow: "🚨 HUGE RED FLAG! Run away, it's toxic",
+    resultMedLow: "⚠️ Very suspicious... I advise you to have a real talk",
+    resultMed: "🤔 It's mixed... Stay alert but don't panic",
+    resultMedHigh: "✅ Looks pretty healthy! A few details to watch",
+    resultHigh: "💚 IT'S TRUE! Go for it, this person is genuine"
+  }
+};
+
+// Fonction de changement de langue
+function changeLang() {
+  currentLang = document.getElementById('langSelect').value;
+  updateTexts();
+  localStorage.setItem('ecko_lang', currentLang);
+}
+
+function updateTexts() {
+  const t = translations[currentLang];
+  document.getElementById('subtitle').textContent = t.subtitle;
+  document.getElementById('step1Title').textContent = t.step1Title;
+  document.getElementById('q1').placeholder = t.step1Placeholder;
+  document.getElementById('step2Title').textContent = t.step2Title;
+  document.getElementById('q2').placeholder = t.step2Placeholder;
+  document.getElementById('step3Title').textContent = t.step3Title;
+  document.getElementById('btn1').textContent = t.btnNext;
+  document.getElementById('btn2').textContent = t.btnNext;
+  document.getElementById('btn3').textContent = t.btnAnalyze;
+  document.getElementById('freeUsed').textContent = t.freeUsed;
+  document.getElementById('btnPremium').textContent = t.btnPremium;
+  document.getElementById('btnRestart').textContent = t.btnRestart;
+  document.getElementById('chatTitle').textContent = t.chatTitle;
+  document.getElementById('welcomeMsg').textContent = t.welcomeMsg;
+  document.getElementById('input').placeholder = t.inputPlaceholder;
+  document.getElementById('btnSend').textContent = t.btnSend;
+  document.getElementById('btnNewAnalysis').textContent = t.btnNewAnalysis;
+}
+
+// Pétales
+for(let i=0;i<35;i++){
+  let p=document.createElement('div');
+  p.className='petal';
+  p.style.left=Math.random()*100+'%';
+  p.style.animationDelay=Math.random()*12+'s';
+  p.style.animationDuration=10+Math.random()*10+'s';
+  document.getElementById('petals').appendChild(p);
+}
+
+// Navigation
+function next(n){
+  document.getElementById('step'+(n-1)).classList.add('hidden');
+  document.getElementById('step'+n).classList.remove('hidden');
+  if(n===3){
+    document.getElementById('intuition').oninput=()=>{
+      document.getElementById('val').textContent=document.getElementById('intuition').value;
+    }
+  }
+}
+
+// Analyse (algorithme amélioré)
+function calculer(){
+  const t = translations[currentLang];
+  let q1=document.getElementById('q1').value.toLowerCase();
+  let q2=document.getElementById('q2').value.toLowerCase();
+  let intuition=parseInt(document.getElementById('intuition').value);
+
+  // Algorithme de score
+  let score = intuition * 8;
+  
+  // Red flags majeurs
+  const redFlags = ['ment', 'trompe', 'cache', 'ex', 'secret', 'autre fille', 'autre mec', 'suspect', 'lie', 'cheat', 'hide'];
+  const warningFlags = ['like', 'photo', 'message', 'répond pas', 'en ligne', 'occupe', 'tard', 'online', 'busy', 'late'];
+  
+  redFlags.forEach(flag => {
+    if((q1+q2).includes(flag)) score -= 25;
+  });
+  
+  warningFlags.forEach(flag => {
+    if((q1+q2).includes(flag)) score -= 15;
+  });
+
+  // Ajout de randomness réaliste
+  score += Math.floor(Math.random()*15)-7;
+  score = Math.max(5, Math.min(95, score));
+
+  // Messages contextuels selon la langue
+  let msg;
+  if(score < 20) {
+    msg = t.resultLow;
+  } else if(score < 40) {
+    msg = t.resultMedLow;
+  } else if(score < 60) {
+    msg = t.resultMed;
+  } else if(score < 80) {
+    msg = t.resultMedHigh;
+  } else {
+    msg = t.resultHigh;
+  }
+
+  document.getElementById('percent').textContent=score+"%";
+  document.getElementById('msg').textContent=msg;
+  document.getElementById('step3').classList.add('hidden');
+  document.getElementById('result').classList.remove('hidden');
+
+  // Sauvegarder dans localStorage qu'une analyse gratuite a été utilisée
+  localStorage.setItem('ecko_used', 'true');
+}
+
+// Initialisation Stripe
+async function initStripe(){
+  stripe = Stripe(STRIPE_PUBLIC_KEY);
+  
+  try {
+    const response = await fetch('https://VOTRE-DOMAINE.com/create-checkout-session', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({priceId: PRICE_ID})
+    });
+    
+    const session = await response.json();
+    const result = await stripe.redirectToCheckout({sessionId: session.id});
+    
+    if(result.error) {
+      alert('Erreur de paiement : ' + result.error.message);
+    }
+  } catch(error) {
+    // Version démo : débloquer directement
+    alert('Version démo : Chat débloqué gratuitement !');
+    unlockChat();
+  }
+}
+
+// Débloquer le chat (après paiement)
+function unlockChat(){
+  document.getElementById('result').classList.add('hidden');
+  document.getElementById('chat').classList.remove('hidden');
+  localStorage.setItem('ecko_premium', 'true');
+}
+
+// Vérifier si déjà premium au chargement
+window.onload = function(){
+  // Récupérer la langue sauvegardée
+  const savedLang = localStorage.getItem('ecko_lang');
+  if(savedLang) {
+    currentLang = savedLang;
+    document.getElementById('langSelect').value = savedLang;
+  }
+  updateTexts();
+  
+  if(localStorage.getItem('ecko_premium') === 'true'){
+    document.getElementById('step1').classList.add('hidden');
+    document.getElementById('chat').classList.remove('hidden');
+  }
+}
+
+// RÉPONSES PRÉ-ÉCRITES (FR + EN)
+const responses = {
+  fr: {
+    "ment": [
+      "Woof ! 🐕 Les mensonges c'est comme les os pourris... ça sent mauvais de loin. Si tu sens qu'il/elle te ment, c'est qu'il y a sûrement anguille sous roche. Fais-moi confiance, mon flair ne se trompe jamais ! Tu veux qu'on creuse ensemble ?",
+      "Red flag alert ! 🚩 Un mensonge en cache souvent plein d'autres. C'est comme quand je cache un os et que j'en cache 10 autres par précaution... Méfie-toi !",
+      "Ouaf ! Mon instinct de shiba me dit : quelqu'un qui ment une fois mentira encore. C'est comme essayer d'attraper sa queue, ça tourne en rond et ça mène nulle part !"
+    ],
+    "ex": [
+      "Ah les ex... 😬 C'est comme moi avec mes anciennes gamelles, parfois on y repense mais faut pas y retourner ! Si ton crush parle trop de son ex, c'est qu'il/elle n'a pas tourné la page. Tu mérites mieux !",
+      "Woof woof ! 🐕 Les ex c'est du passé, comme mes vieux jouets rongés. Si il/elle passe son temps à en parler, c'est qu'il y a encore des sentiments qui traînent...",
+      "Mon flair de shiba détecte un truc : trop parler de son ex = pas prêt(e) pour une vraie relation. C'est comme vouloir deux gamelles en même temps !"
+    ],
+    "réseaux sociaux": [
+      "Ah les réseaux... 📱 C'est le terrain de chasse moderne ! Si il/elle like tout ce qui bouge, c'est red flag. Un vrai bon parti n'a d'yeux que pour sa meuf/son mec !",
+      "Woof ! Les likes suspects c'est comme si je reniflais d'autres chiens alors que j'ai déjà mon humain préféré... C'est pas très respectueux !",
+      "Mon conseil de shiba wise : quelqu'un qui t'aime vraiment ne like pas des photos suggestives d'autres personnes. Point final ! 🐕"
+    ],
+    "default": [
+      "Woof ! 🐕 Je t'écoute, raconte-moi plus en détails ce qui te tracasse. Mon flair de shiba est là pour t'aider !",
+      "Ouaf ! Dis-m'en plus, je sens qu'il y a une histoire là-dessous. Je suis tout ouïe (enfin... tout oreilles pointues de shiba !) 👂",
+      "Hmm intéressant... 🤔 Développe un peu plus, que je puisse t'aider avec mon instinct de detective canin !"
+    ]
+  },
+  en: {
+    "lie": [
+      "Woof! 🐕 Lies are like rotten bones... they stink from far away. If you feel they're lying, there's probably something fishy. Trust me, my sense never fails! Want to dig deeper together?",
+      "Red flag alert! 🚩 One lie often hides many others. It's like when I hide one bone and then hide 10 more just in case... Be careful!",
+      "Woof! My shiba instinct says: someone who lies once will lie again. It's like chasing your tail, it goes in circles and leads nowhere!"
+    ],
+    "ex": [
+      "Ah exes... 😬 It's like me with my old bowls, sometimes we think about them but shouldn't go back! If your crush talks too much about their ex, they haven't moved on. You deserve better!",
+      "Woof woof! 🐕 Exes are the past, like my old chewed toys. If they keep talking about them, feelings are still lingering...",
+      "My shiba sense detects something: talking too much about an ex = not ready for a real relationship. It's like wanting two bowls at the same time!"
+    ],
+    "social": [
+      "Ah social media... 📱 It's the modern hunting ground! If they like everything that moves, red flag. A real catch only has eyes for their partner!",
+      "Woof! Suspicious likes are like me sniffing other dogs when I already have my favorite human... Not very respectful!",
+      "My wise shiba advice: someone who truly loves you doesn't like suggestive photos of others. Period! 🐕"
+    ],
+    "default": [
+      "Woof! 🐕 I'm listening, tell me more details about what's bothering you. My shiba sense is here to help!",
+      "Woof! Tell me more, I sense there's a story here. I'm all ears (well... all pointy shiba ears!) 👂",
+      "Hmm interesting... 🤔 Tell me more, so I can help you with my canine detective instinct!"
+    ]
+  }
+};
+
+// Fonction de chat avec IA "fake"
+function send(){
+  const t = translations[currentLang];
+  let input = document.getElementById('input');
+  let msg = input.value.trim();
+  if(!msg) return;
+
+  // Afficher le message utilisateur
+  addMessage(msg, 'user');
+  input.value = "";
+
+  // Simuler le "typing..."
+  let typingDiv = addMessage(t.typing, 'ecko', true);
+  
+  setTimeout(() => {
+    typingDiv.remove();
+    
+    // Sélectionner une réponse appropriée
+    let response = selectResponse(msg.toLowerCase());
+    addMessage(response, 'ecko');
+  }, 1000 + Math.random()*1000);
+}
+
+function addMessage(text, type, isTyping = false){
+  let div = document.createElement('div');
+  div.className = `msg ${type}` + (isTyping ? ' typing' : '');
+  div.textContent = text;
+  document.getElementById('messages').appendChild(div);
+  document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+  return div;
+}
+
+function selectResponse(msg){
+  const langResponses = responses[currentLang];
+  
+  // Détection de mots-clés selon la langue
+  if(currentLang === 'fr') {
+    if(msg.includes('ment') || msg.includes('mentir')) return langResponses.ment[Math.floor(Math.random()*langResponses.ment.length)];
+    if(msg.includes('ex')) return langResponses.ex[Math.floor(Math.random()*langResponses.ex.length)];
+    if(msg.includes('like') || msg.includes('instagram') || msg.includes('snap')) return langResponses["réseaux sociaux"][Math.floor(Math.random()*langResponses["réseaux sociaux"].length)];
+  } else {
+    if(msg.includes('lie') || msg.includes('lying') || msg.includes('liar')) return langResponses.lie[Math.floor(Math.random()*langResponses.lie.length)];
+    if(msg.includes('ex')) return langResponses.ex[Math.floor(Math.random()*langResponses.ex.length)];
+    if(msg.includes('like') || msg.includes('instagram') || msg.includes('snap')) return langResponses.social[Math.floor(Math.random()*langResponses.social.length)];
+  }
+  
+  // Réponse par défaut
+  return langResponses.default[Math.floor(Math.random()*langResponses.default.length)];
+}
+
+function restart(){
+  document.querySelectorAll('textarea, input[type=range], input[type=text]').forEach(e => e.value = e.type==='range' ? 5 : '');
+  document.getElementById('val').textContent = '5';
+  ['step2','step3','result','chat'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  document.getElementById('step1').classList.remove('hidden');
+  document.getElementById('messages').innerHTML = '<div class="msg ecko">Woof ! 🐕 Tout est débloqué, pose-moi n\'importe quoi sur l\'amour, les relations, les red flags... Je suis là !</div>';
+}
+</script>
+</body>
+</html>
